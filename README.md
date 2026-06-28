@@ -75,3 +75,44 @@ cc -std=c11 -o fallback_test test/fallback_test.c -I. -L. -landroid-shmem -llog
 LD_LIBRARY_PATH=. ./fallback_test
 # 🧪 Backend fallback test → ✅ 6/6 PASS
 ```
+
+## ashmem autopsy: Android 14 (kernel 5.10.226)
+
+Full ioctl-level testing reveals that ashmem on modern Android kernels is a **zombie** — only the bare minimum allocation path survives:
+
+### Alive
+| Feature | Status |
+|---------|:---:|
+| SET_SIZE (allocation) | ✅ |
+| mmap (R/W + R/O + SEGV guard) | ✅ |
+| 10 concurrent fds | ✅ |
+| 32MB large allocation | ✅ |
+
+### Dead
+| Feature | Status |
+|---------|:---:|
+| SET\_NAME / GET\_NAME | 💀 ENOTTY |
+| GET\_SIZE | 💀 ENOTTY |
+| SET\_PROT\_MASK / GET\_PROT\_MASK | 💀 ENOTTY |
+| PIN / UNPIN | 💀 EINVAL |
+| GET\_PIN\_STATUS | 💀 ENOTTY |
+| PURGE\_ALL\_CACHES | 💀 ENOTTY |
+
+### Bottom line
+
+ashmem can allocate and map memory, but **every management function is dead**. You can't name a region, can't query its size, can't pin pages, can't purge caches, can't set protection masks. The kernel has deliberately gutted all advanced features, leaving only the minimal allocation path for legacy app compatibility.
+
+memfd provides all of this — naming (`/proc/self/fd/N`), sizing (`fstat`), sealing (`F_SEAL_WRITE`), and more — with a single syscall and no device dependency.
+
+## Memory comparison
+
+| Feature | ashmem (Honor 5.10.226) | memfd |
+|---------|:---:|:---:|
+| Allocate | ✅ SET\_SIZE (32-bit compat) | ✅ ftruncate |
+| mmap R/W | ✅ | ✅ |
+| Name | ❌ ENOTTY | ✅ /proc/self/fd/N |
+| Query size | ❌ ENOTTY | ✅ fstat |
+| Pin pages | ❌ EINVAL | ✅ via mlock |
+| Sealing | ❌ | ✅ F\_SEAL\_\* |
+| SELinux shell access | ❌ EACCES | ✅ |
+| Cross-process via SCM_RIGHTS | ✅ | ✅ |
