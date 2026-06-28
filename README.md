@@ -33,3 +33,45 @@ All credit for the System V shm API layer, the SCM_RIGHTS cross-process fd passi
 ## License
 
 BSD-3-Clause (same as [pelya/android-shmem](https://github.com/pelya/android-shmem))
+
+## Why memfd over ashmem? (updated findings)
+
+Testing on Honor ALT-AN00 (kernel 5.10.226, Android 14):
+
+| Issue | ashmem | memfd |
+|-------|--------|-------|
+| ioctl number | 64-bit `SET_SIZE` returns `ENOTTY`; only 32-bit compat ioctl works | `ftruncate()` — no ioctl guessing |
+| SELinux | `shell` domain blocked from `/dev/ashmem` entirely (`EACCES`) | No device path needed |
+| Device dependency | Requires `/dev/ashmem` node | Anonymous — no FS path |
+| Cross-UID access | Only `untrusted_app` domain can open | Any process with fd access |
+
+## Test matrix (real hardware)
+
+| UID | Context | `/dev/ashmem` | `SET_SIZE` (32-bit) | `memfd` |
+|-----|---------|:---:|:---:|:---:|
+| 2000 | ADB shell | ❌ SELinux | — | ✅ |
+| 10228 | Termux app | ✅ | ✅ | ✅ |
+| 10318 | Device Owner | — | — | ✅ |
+
+## Building
+
+```bash
+git clone https://github.com/ClaudeCode-Termux/libandroid-shmem-memfd.git
+cd libandroid-shmem-memfd
+make libandroid-shmem.so
+# → libandroid-shmem.so (21KB)
+```
+
+## Testing
+
+Full test suite passes on real hardware:
+
+```bash
+cc -std=c11 -o stress_shm test/stress_shm.c -I. -L. -landroid-shmem -llog
+LD_LIBRARY_PATH=. ./stress_shm
+# 🧪 10 test categories → ✅ ALL PASS
+
+cc -std=c11 -o fallback_test test/fallback_test.c -I. -L. -landroid-shmem -llog  
+LD_LIBRARY_PATH=. ./fallback_test
+# 🧪 Backend fallback test → ✅ 6/6 PASS
+```
