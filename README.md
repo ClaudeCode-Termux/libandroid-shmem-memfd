@@ -1,4 +1,5 @@
 # libandroid-shmem-memfd
+[中文](./README_CN.md)
 
 System V shared memory on Android — **memfd backend**. No `/dev/ashmem` dependency.
 

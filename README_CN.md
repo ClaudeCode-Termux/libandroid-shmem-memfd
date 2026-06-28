@@ -1,4 +1,5 @@
 # libandroid-shmem-memfd
+[English](./README.md)
 
 Android 上的 System V 共享内存——**memfd 驱动**。告别 `/dev/ashmem`。
 
